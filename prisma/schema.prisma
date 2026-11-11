@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+}
+
+enum CardType {
+  TEXT
+  IMAGE
+  LINK_BUTTON
+  CONTACT
+  MAP
+  SOCIAL
+  VIDEO_EMBED
+  FILE_DOWNLOAD
+  DIVIDER
+  GALLERY
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(EDITOR)
+  createdAt    DateTime @default(now())
+  pages        Page[]
+}
+
+model Page {
+  id          String    @id @default(cuid())
+  ownerId     String
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  title       String
+  slug        String    @unique
+  description String?
+  isPublished Boolean   @default(false)
+  theme       Json
+  coverImage  String?
+  logo        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  cards       Card[]
+  scanLogs    ScanLog[]
+
+  @@index([ownerId])
+}
+
+model Card {
+  id        String   @id @default(cuid())
+  pageId    String
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  type      CardType
+  order     Int      @default(0)
+  isVisible Boolean  @default(true)
+  content   Json
+  style     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pageId, order])
+}
+
+model ScanLog {
+  id         String   @id @default(cuid())
+  pageId     String
+  page       Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  scannedAt  DateTime @default(now())
+  userAgent  String?
+  deviceType String?
+  referrer   String?
+  ipHash     String?
+
+  @@index([pageId, scannedAt])
+}
