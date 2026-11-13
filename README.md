@@ -1,4 +1,4 @@
-# QR Card Page — Fase 1 dan 2
+# QR Card Page — Fase 1–6
 
 Fondasi Next.js 15 App Router, React 19, TypeScript strict, Tailwind CSS 3,
 shadcn/ui, Prisma 6, PostgreSQL, Zod 4, dan NextAuth credentials.
@@ -511,3 +511,51 @@ Undo/redo opsional belum ditambahkan.
 - Tes: `tests/{builder,builder-service,document-upload}.test.ts`; fixture video
   pada `tests/card.test.ts` disesuaikan ke ID video valid. Dependensi/lockfile dan
   README diperbarui. Autentikasi dan seed tidak berubah.
+
+## Fase 6 — Statistik scan
+
+`/admin` menampilkan total scan, 7 dan 30 hari terakhir, serta halaman terpopuler;
+kolom scan per halaman membaca jumlah nyata dari `ScanLog`. Statistik per halaman
+ada di `/admin/pages/[id]/stats`, dengan rentang 7/30/90 hari atau tanggal kustom
+maksimal 90 hari. Grafik harian, perangkat, dan jam menggunakan agregasi SQL di
+PostgreSQL; tanggal dan jam dikelompokkan dalam `Asia/Jakarta`, dan tanggal tanpa
+scan diisi nol. Grafik menyediakan tabel data yang dapat dibuka sebagai alternatif
+aksesibel. EDITOR hanya dapat melihat halaman miliknya; ADMIN melihat semua.
+
+Ekspor `/api/pages/[id]/stats/export` memvalidasi akses dan streaming CSV per 1.000
+baris. Rentang ekspor dibatasi 90 hari. CSV berisi waktu ISO dengan offset `+07:00`,
+jenis perangkat, dan referrer; `ipHash` dan user-agent tidak disertakan. Sel yang
+berpotensi menjadi formula spreadsheet diawali apostrof.
+
+Data scan yang disimpan: waktu, kategori perangkat, origin referrer (tanpa path
+atau query), user-agent dari Fase 5, dan HMAC IP opsional untuk deduplikasi. IP
+mentah tidak disimpan. Referrer kosong untuk scan langsung; UI menampilkannya
+sebagai “Langsung / scan QR”. Log
+lama dihapus lewat job retensi yang dijadwalkan. Default retensi 365 hari; atur
+`SCAN_RETENTION_DAYS` (1–36500) sesuai kebijakan.
+
+Jalankan pruning sekali secara manual atau jadwalkan harian, misalnya cron Linux:
+
+```cron
+20 3 * * * cd /srv/qr-card-page && npm run db:prune-scans >> /var/log/qr-card-page-prune.log 2>&1
+```
+
+Cron mewarisi env yang disetel service/deployment; pastikan `DATABASE_URL` dan
+`SCAN_RETENTION_DAYS` tersedia. Indeks `(pageId, scannedAt)` sudah ada sejak
+migrasi awal dan mendukung filter waktu per halaman; indeks tambahan fase 5
+menangani deduplikasi berdasarkan hash IP.
+
+Migrasi Fase 6 mengubah `ScanLog.scannedAt` menjadi `TIMESTAMPTZ(3)` supaya
+parameter `Date` dan pengelompokan timezone memiliki semantik instant yang sama.
+Nilai lama dikonversi dengan asumsi timestamp tanpa zona sebelumnya disimpan
+sebagai UTC oleh Prisma.
+
+Benchmark lokal pada 100.000 log membutuhkan 65 ms untuk empat agregasi statistik
+90 hari pada satu warm run. Detail fixture dan hasil retensi ada di
+[`docs/evidence/phase6-performance.md`](docs/evidence/phase6-performance.md).
+
+Uji manual: buka Statistik dari daftar halaman, bandingkan 7/30/90 hari dan rentang
+kustom, periksa tanggal tengah malam WIB, serta pastikan editor lain ditolak.
+Ekspor CSV dan periksa kolom/escape formula. Jalankan `npm run db:prune-scans` pada
+database uji dengan satu log lebih tua dari retensi dan satu log baru; hanya log
+lama yang harus terhapus.

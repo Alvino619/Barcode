@@ -34,6 +34,15 @@ export function requestIp(headers: Pick<Headers, "get">): string | null {
   return candidate && isIP(candidate) ? candidate : null;
 }
 
+export function sanitizeReferrer(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
+    return url.origin;
+  } catch { return null; }
+}
+
 export async function resolvePublishedSlug(slug: string): Promise<{ pageId: string; latestSlug: string } | null> {
   const page = await prisma.page.findUnique({ where: { slug }, select: { id: true, slug: true, isPublished: true } });
   if (page) return page.isPublished ? { pageId: page.id, latestSlug: page.slug } : null;
@@ -45,7 +54,7 @@ export async function recordScan(pageId: string, request: Request, now = new Dat
   const userAgent = request.headers.get("user-agent")?.slice(0, 512) ?? null;
   if (isPrefetchOrHead(request.method, request.headers) || isBotUserAgent(userAgent)) return false;
   const ipHash = createIpHash(requestIp(request.headers));
-  const referrer = request.headers.get("referer")?.slice(0, 2048) ?? null;
+  const referrer = sanitizeReferrer(request.headers.get("referer"));
   const deviceType = deriveDeviceType(userAgent);
   const cutoff = new Date(now.getTime() - SCAN_DEDUPE_WINDOW_MS);
 

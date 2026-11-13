@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
+    "db:prune-scans": "tsx scripts/prune-scans.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },
@@ -42,6 +43,7 @@
     "qr-code-styling": "^1.9.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "recharts": "^3.10.1",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^4.1.0"

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Pencil, Trash2 } from "lucide-react";
+import { BarChart3, Copy, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/toast-provider";
 import { apiRequest } from "@/lib/api-client";
@@ -31,6 +31,7 @@ export function PageActions({ id, title, slug, logo }: { id: string; title: stri
   }
   return <div className="flex flex-wrap items-center gap-1">
     <Button asChild variant="ghost" size="sm"><Link href={`/admin/pages/${id}/edit`} aria-label={`Edit ${title}`}><Pencil className="h-3.5 w-3.5" />Edit</Link></Button>
+    <Button asChild variant="ghost" size="sm"><Link href={`/admin/pages/${id}/stats`} aria-label={`Statistik ${title}`}><BarChart3 className="h-3.5 w-3.5" />Statistik</Link></Button>
     <QrCodeDialog title={title} slug={slug} defaultLogo={logo} />
     <Button variant="ghost" size="sm" disabled={pending} onClick={duplicate} aria-label={`Duplikat ${title}`}><Copy className="h-3.5 w-3.5" />Duplikat</Button>
     <Button variant="ghost" size="sm" disabled={pending} className="text-destructive hover:bg-red-50 hover:text-destructive" aria-label={`Hapus ${title}`} onClick={() => { setConfirmation(""); setError(""); dialog.current?.showModal(); }}><Trash2 className="h-3.5 w-3.5" />Hapus</Button>

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { createIpHash, deriveDeviceType, isBotUserAgent, isPrefetchOrHead, recordScan, SCAN_DEDUPE_WINDOW_MS } from "@/server/scans";
+import { createIpHash, deriveDeviceType, isBotUserAgent, isPrefetchOrHead, recordScan, sanitizeReferrer, SCAN_DEDUPE_WINDOW_MS } from "@/server/scans";
 
 vi.mock("@/lib/prisma", () => ({ prisma: { $transaction: vi.fn() } }));
 const tx = {
@@ -32,6 +32,12 @@ it("menurunkan tipe perangkat dari user agent", () => {
   expect(deriveDeviceType("curl/8.0")).toBe("other");
 });
 
+it("menyimpan asal referrer saja tanpa path, query, atau kredensial", () => {
+  expect(sanitizeReferrer("https://news.example/article/secret?email=a@b.test#part")).toBe("https://news.example");
+  expect(sanitizeReferrer("javascript:alert(1)")).toBeNull();
+  expect(sanitizeReferrer("https://user:password@news.example/private")).toBeNull();
+});
+
 it("menghasilkan HMAC konsisten dan tidak menerima input tanpa secret/IP valid", () => {
   const first = createIpHash("203.0.113.4", "a-secret-with-at-least-32-characters");
   expect(first).toMatch(/^[a-f0-9]{64}$/);
@@ -45,14 +51,14 @@ it("mencatat metadata dan deduplikasi memakai jendela 30 detik", async () => {
   const now = new Date("2026-11-13T00:00:00.000Z");
   const req = new Request("https://contoh.test/r/slug", { headers: {
     "user-agent": "Mozilla/5.0 (Linux; Android 14)", "x-forwarded-for": "203.0.113.4, 10.0.0.1",
-    referer: "https://search.example/",
+    referer: "https://search.example/results?q=private",
   } });
   await recordScan("page-1", req, now);
   expect(tx.scanLog.findFirst).toHaveBeenCalledWith({ where: {
     pageId: "page-1", ipHash: expect.any(String), scannedAt: { gte: new Date(now.getTime() - SCAN_DEDUPE_WINDOW_MS) },
   }, select: { id: true } });
   expect(tx.scanLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
-    pageId: "page-1", deviceType: "android", referrer: "https://search.example/", scannedAt: now,
+    pageId: "page-1", deviceType: "android", referrer: "https://search.example", scannedAt: now,
     ipHash: createIpHash("203.0.113.4", process.env.IP_HASH_SECRET),
   }) });
   tx.scanLog.findFirst.mockResolvedValueOnce({ id: "recent" });

@@ -5,13 +5,16 @@ import { listPages } from "@/server/pages";
 import { pageQuerySchema } from "@/lib/schemas/page";
 import { Button } from "@/components/ui/button";
 import { PageActions } from "@/components/page-actions";
+import { getDashboardStats } from "@/server/stats";
 
 const dateFormat = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" });
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireUser();
   const parsed = pageQuerySchema.safeParse(await searchParams);
-  const { pages, total, currentPage, totalPages, query } = await listPages(user, parsed.success ? parsed.data : {});
+  const [{ pages, total, currentPage, totalPages, query }, stats] = await Promise.all([
+    listPages(user, parsed.success ? parsed.data : {}), getDashboardStats(user),
+  ]);
   const linkToPage = (page: number) => `/admin?${new URLSearchParams({ q: query.q, status: query.status, page: String(page) })}`;
   const filtered = Boolean(query.q || query.status !== "all");
   return <div className="space-y-7">
@@ -19,6 +22,12 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       <div><p className="mb-2 text-xs font-semibold uppercase tracking-widest text-primary">Ruang pengelola</p><h1 className="text-3xl font-bold tracking-tight">Halaman Anda</h1><p className="mt-2 text-sm text-muted-foreground">{user.role === "ADMIN" ? "Kelola seluruh halaman, identitas, dan status publikasi." : "Kelola halaman milik Anda dalam satu tempat."}</p></div>
       <Button asChild><Link href="/admin/pages/new"><Plus className="h-4 w-4" />Buat halaman</Link></Button>
     </div>
+    <section aria-label="Ringkasan statistik scan" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <article className="rounded-xl border bg-white p-4"><p className="text-sm text-muted-foreground">Total scan</p><p className="mt-1 text-2xl font-bold tabular-nums">{stats.total.toLocaleString("id-ID")}</p></article>
+      <article className="rounded-xl border bg-white p-4"><p className="text-sm text-muted-foreground">7 hari terakhir</p><p className="mt-1 text-2xl font-bold tabular-nums">{stats.last7.toLocaleString("id-ID")}</p></article>
+      <article className="rounded-xl border bg-white p-4"><p className="text-sm text-muted-foreground">30 hari terakhir</p><p className="mt-1 text-2xl font-bold tabular-nums">{stats.last30.toLocaleString("id-ID")}</p></article>
+      <article className="rounded-xl border bg-white p-4"><p className="text-sm text-muted-foreground">Halaman terpopuler</p>{stats.popular ? <><Link href={`/admin/pages/${stats.popular.id}/stats`} className="mt-1 block truncate font-semibold text-primary hover:underline">{stats.popular.title}</Link><p className="text-xs text-muted-foreground">{stats.popular.scans.toLocaleString("id-ID")} scan</p></> : <p className="mt-1 font-semibold">Belum ada scan</p>}</article>
+    </section>
     <div className="rounded-2xl border bg-white">
       <form action="/admin" className="flex flex-wrap items-end gap-3 border-b p-4 sm:p-5">
         <div className="min-w-48 flex-1"><label htmlFor="search" className="mb-2 block text-xs font-medium text-muted-foreground">Cari halaman</label><div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input id="search" name="q" defaultValue={query.q} maxLength={100} placeholder="Judul atau slug…" className="h-10 w-full rounded-lg border pl-9 pr-3 text-sm focus:outline-primary" /></div></div>

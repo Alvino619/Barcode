@@ -97,7 +97,7 @@ model ScanLog {
   id         String   @id @default(cuid())
   pageId     String
   page       Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
-  scannedAt  DateTime @default(now())
+  scannedAt  DateTime @default(now()) @db.Timestamptz(3)
   userAgent  String?
   deviceType String?
   referrer   String?
