@@ -433,9 +433,10 @@ tetapi deduplikasi IP tidak berlaku.
 
 Env Fase 5:
 
-- `NEXT_PUBLIC_APP_URL`: URL dasar publik yang ditanam ke QR. Wajib diatur ke
-  domain publik saat deployment; aplikasi memberi peringatan bila production
-  memakai localhost. Untuk dev, gunakan `http://localhost:3000`.
+- `NEXT_PUBLIC_APP_URL`: opsional, URL dasar publik khusus yang ditanam ke QR.
+  Jika belum diatur atau masih berupa alamat loopback seperti `localhost`, QR
+  otomatis memakai origin yang dibuka di browser (termasuk HTTPS dan port).
+  Untuk domain publik khusus, atur sebelum build lalu build dan deploy ulang.
 - `IP_HASH_SECRET`: secret acak minimal 32 karakter, khusus untuk HMAC IP. Buat
   misalnya dengan `openssl rand -hex 32`; jangan pakai `NEXTAUTH_SECRET` ulang.
 

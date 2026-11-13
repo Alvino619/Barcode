@@ -10,3 +10,11 @@ const parsedUrl = baseUrlSchema.safeParse(configuredUrl);
 if (!parsedUrl.success) throw new Error(parsedUrl.error.issues[0]?.message ?? "NEXT_PUBLIC_APP_URL tidak valid.");
 
 export const appBaseUrl = new URL(parsedUrl.data).origin;
+
+export function resolveQrBaseUrl(browserOrigin: string, configuredOrigin = appBaseUrl): string {
+  const configured = new URL(configuredOrigin);
+  const hostname = configured.hostname.toLowerCase();
+  const isLocal = hostname === "localhost" || hostname.endsWith(".localhost") ||
+    hostname === "[::1]" || hostname.startsWith("127.") || hostname === "0.0.0.0";
+  return isLocal ? new URL(browserOrigin).origin : configured.origin;
+}

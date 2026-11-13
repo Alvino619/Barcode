@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, QrCode, Copy, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { appBaseUrl } from "@/lib/app-url";
+import { resolveQrBaseUrl } from "@/lib/app-url";
 import { contrastRatio } from "@/lib/card-links";
 
 type Correction = "L" | "M" | "Q" | "H";
@@ -29,7 +29,11 @@ export function QrCodeDialog({ title, slug, defaultLogo }: { title: string; slug
   const [logo, setLogo] = useState(defaultLogo ?? "");
   const [logoSize, setLogoSize] = useState(0.16);
   const [status, setStatus] = useState("");
-  const url = useMemo(() => `${appBaseUrl}/r/${slug}`, [slug]);
+  const [baseUrl, setBaseUrl] = useState("");
+  const url = baseUrl ? `${baseUrl}/r/${slug}` : "";
+  useEffect(() => {
+    setBaseUrl(resolveQrBaseUrl(window.location.origin));
+  }, []);
   const logoValid = !logo || (() => {
     if (logo.startsWith("/uploads/")) return /^\/uploads\/[a-f0-9-]+\.(?:jpg|png|webp)$/i.test(logo);
     try { return ["http:", "https:"].includes(new URL(logo).protocol); } catch { return false; }
@@ -50,6 +54,7 @@ export function QrCodeDialog({ title, slug, defaultLogo }: { title: string; slug
   }
 
   useEffect(() => {
+    if (!url) return;
     let cancelled = false;
     void import("qr-code-styling").then(({ default: QRCodeStyling }) => {
       if (cancelled || !preview.current) return;
@@ -105,7 +110,7 @@ export function QrCodeDialog({ title, slug, defaultLogo }: { title: string; slug
   }
 
   return <>
-    <Button type="button" variant="outline" size="sm" onClick={() => { setStatus(""); dialog.current?.showModal(); }} aria-label={`Buat QR untuk ${title}`}><QrCode className="h-4 w-4" />QR Code</Button>
+    <Button type="button" variant="outline" size="sm" disabled={!url} onClick={() => { setStatus(""); dialog.current?.showModal(); }} aria-label={`Buat QR untuk ${title}`}><QrCode className="h-4 w-4" />QR Code</Button>
     <dialog ref={dialog} aria-labelledby={`qr-title-${slug}`} className="max-h-[92dvh] w-[calc(100%-1rem)] max-w-3xl overflow-y-auto rounded-2xl border bg-white p-0 shadow-xl backdrop:bg-slate-950/50" onClose={() => setStatus("")}>
       <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-5 py-4"><div><h2 id={`qr-title-${slug}`} className="text-xl font-bold">QR Code · {title}</h2><p className="text-xs text-muted-foreground">URL tetap: {url}</p></div><Button variant="ghost" size="icon" aria-label="Tutup dialog QR" onClick={() => dialog.current?.close()}><X className="h-4 w-4" /></Button></div>
       <div className="grid gap-6 p-5 md:grid-cols-[280px_1fr]">
