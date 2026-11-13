@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { CardType } from "@prisma/client";
 import { cardSchema, type CardInput } from "../lib/schemas/card";
 import { pageThemeSchema } from "../lib/schemas/page";
@@ -12,7 +12,7 @@ const examples: CardInput[] = [
   { type: "CONTACT", content: { name: "Tim", email: "halo@example.com" } },
   { type: "MAP", content: { label: "Kantor", latitude: -6.2, longitude: 106.8 } },
   { type: "SOCIAL", content: { links: [{ platform: "instagram", url: "https://instagram.com/example" }] } },
-  { type: "VIDEO_EMBED", content: { title: "Video", url: "https://www.youtube.com/watch?v=abc" } },
+  { type: "VIDEO_EMBED", content: { title: "Video", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" } },
   { type: "FILE_DOWNLOAD", content: { label: "Brosur", url: "/uploads/brosur.pdf", fileName: "brosur.pdf" } },
   { type: "DIVIDER", content: {} },
   { type: "GALLERY", content: { images: [{ url: "https://example.com/foto.jpg", alt: "Foto" }] } },

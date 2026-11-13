@@ -33,6 +33,7 @@ model User {
   role         Role     @default(EDITOR)
   createdAt    DateTime @default(now())
   pages        Page[]
+  uploadedImages UploadedImage[]
 }
 
 model Page {
@@ -50,8 +51,31 @@ model Page {
   updatedAt   DateTime  @updatedAt
   cards       Card[]
   scanLogs    ScanLog[]
+  slugHistory PageSlugHistory[]
 
   @@index([ownerId])
+}
+
+model PageSlugHistory {
+  id        String   @id @default(cuid())
+  pageId    String
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  @@index([pageId])
+}
+
+// Track pending uploads and ownership; references themselves live in Page/Card JSON.
+model UploadedImage {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  url       String   @unique
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@index([ownerId, createdAt])
 }
 
 model Card {
@@ -80,4 +104,5 @@ model ScanLog {
   ipHash     String?
 
   @@index([pageId, scannedAt])
+  @@index([pageId, ipHash, scannedAt])
 }

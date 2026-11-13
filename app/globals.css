@@ -24,3 +24,43 @@
   * { @apply border-border; }
   body { @apply bg-background text-foreground antialiased; }
 }
+
+/* Public-page design tokens: theme once per page, card overrides once per card. */
+.public-page { position: relative; isolation: isolate; min-height: 100%; padding: 2rem 1rem; background-color: var(--page-bg); background-image: var(--page-gradient), var(--page-dots); background-size: auto, 16px 16px; color: var(--page-text); font-family: var(--page-font); overflow-wrap: anywhere; }
+.public-page-full { min-height: 100svh; }
+.public-content { position: relative; width: 100%; max-width: var(--page-width); margin-inline: auto; }
+.public-backdrop { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.public-header { margin-bottom: 1.5rem; text-align: center; }
+.public-header h1 { font-size: clamp(1.5rem, 5vw, 2.25rem); line-height: 1.25; font-weight: 700; }
+.public-header > p { margin-top: .75rem; font-size: 1rem; line-height: 1.65; white-space: pre-wrap; }
+.public-cover { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--page-radius); margin-bottom: 1.5rem; }
+.public-logo { position: relative; width: 80px; height: 80px; margin: 0 auto 1rem; overflow: hidden; border-radius: 50%; }
+.public-cards { display: flex; flex-direction: column; gap: var(--page-gap); }
+.public-card-entry { min-width: 0; }
+.public-card { min-width: 0; overflow-wrap: anywhere; color: var(--card-text, var(--page-text)); background: var(--card-bg); border-radius: var(--card-radius, var(--page-radius)); padding: var(--card-padding); text-align: var(--card-align); }
+.public-text { font-size: var(--text-size); font-weight: var(--text-weight); }
+.public-links { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: var(--card-justify); }
+.public-link { min-height: 44px; overflow-wrap: anywhere; white-space: normal; }
+.public-media { position: relative; width: 100%; aspect-ratio: var(--media-ratio, 4 / 3); overflow: hidden; border-radius: inherit; }
+.public-media-image { object-fit: var(--media-fit, cover); }
+.public-map, .public-video { display: block; width: 100%; border: 0; border-radius: .5rem; }
+.public-map { height: var(--map-height); }
+.public-video { aspect-ratio: var(--video-ratio); }
+.public-divider { border: 0; border-top: var(--divider-width) var(--divider-style) currentColor; }
+.public-gallery { gap: var(--gallery-gap); }
+.public-grid { display: grid; grid-template-columns: repeat(var(--gallery-columns), minmax(0, 1fr)); }
+.public-carousel { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: .75rem; }
+.public-gallery-image { position: relative; width: 100%; aspect-ratio: 1; border-radius: .5rem; overflow: hidden; }
+.public-footer { margin-top: 2rem; text-align: center; font-size: .8125rem; line-height: 1.5; }
+.public-footer a { display: inline-block; padding: .75rem .25rem; text-decoration: underline; text-underline-offset: 3px; }
+.public-page :is(a, button, [tabindex]):focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
+.public-hidden-label { border: 1px dashed #92400e; border-radius: .5rem; padding: .5rem .75rem; margin-bottom: .5rem; background: #fffbeb; color: #78350f; font-size: .75rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .public-header, .public-card-entry { animation: public-enter .28s ease-out both; }
+  @keyframes public-enter { from { opacity: .01; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .public-page *, .public-page *::before, .public-page *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+.public-text p { overflow-wrap: anywhere; }

@@ -7,7 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "vitest run",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
@@ -15,20 +15,31 @@
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },
-  "prisma": { "seed": "tsx prisma/seed.ts" },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "overrides": {
-    "postcss": "$postcss",
-    "@prisma/config": { "deepmerge-ts": "^8.0.0" }
+    "postcss": "^8.5.32",
+    "@prisma/config": {
+      "deepmerge-ts": "^8.0.0"
+    }
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@prisma/client": "^6.19.0",
     "@radix-ui/react-slot": "^1.2.3",
     "bcryptjs": "^3.0.2",
+    "cfb": "^1.2.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "fflate": "^0.8.3",
     "lucide-react": "^0.468.0",
     "next": "^15.5.0",
     "next-auth": "^4.24.11",
+    "pdf-lib": "^1.17.1",
+    "qr-code-styling": "^1.9.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwind-merge": "^2.6.0",
@@ -40,10 +51,11 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.6",
+    "postcss": "^8.5.32",
     "prisma": "^6.19.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.12"
   }
 }
