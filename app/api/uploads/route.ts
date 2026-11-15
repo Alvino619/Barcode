@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import sharp from "sharp";
 import { requireUser } from "@/server/auth";
 import { assertCanManagePage } from "@/server/page-access";
 import { pageTransaction } from "@/server/page-transactions";
@@ -23,12 +24,15 @@ export async function POST(request: Request) {
     const context = uploadContextSchema.parse({ pageId: form.get("pageId") ?? undefined });
     const file = uploadFileSchema.parse(form.get("file"));
     const data = new Uint8Array(await file.arrayBuffer());
-    let extension;
-    try { extension = validateImageBytes(data); }
+    try { validateImageBytes(data); }
     catch { throw new AppError(400, "Isi file harus JPEG, PNG, atau WebP maksimal 5 MB. SVG tidak diizinkan."); }
     await assertCanManagePage(user, context.pageId ?? null);
+    let processed: Buffer;
+    try {
+      processed = await sharp(data).rotate().resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+    } catch { throw new AppError(400, "Isi file harus JPEG, PNG, atau WebP maksimal 5 MB. SVG tidak diizinkan."); }
     const storage = getStorage();
-    const image = await storage.save(data, extension);
+    const image = await storage.save(processed, "webp");
     try {
       await pageTransaction(async (tx) => {
         await assertCanManagePage(user, context.pageId ?? null, tx);

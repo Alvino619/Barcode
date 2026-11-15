@@ -195,9 +195,11 @@ alamat publik hanya menampilkan judul/deskripsi; renderer kartu belum dibuat.
 
 `lib/storage.ts` menyediakan interface `StorageProvider` (`save`, `delete`,
 `getUrl`) dan `LocalStorageProvider`. File disimpan di `public/uploads/` memakai
-nama UUID dan ekstensi hasil deteksi isi. JPEG/PNG/WebP maksimal 5 MB diterima;
-SVG, signature tidak dikenal, dan file terlalu besar ditolak. MIME atau ekstensi
-dari browser tidak dipercaya. Ukuran body multipart juga dibatasi saat streaming.
+nama UUID dan ekstensi `.webp`. JPEG/PNG/WebP maksimal 5 MB diterima dan
+dikonversi menjadi WebP dengan sisi terpanjang maksimal 1600 piksel tanpa
+memperbesar gambar kecil. SVG, gambar yang tidak dapat didekode, dan file terlalu
+besar ditolak. MIME atau ekstensi dari browser tidak dipercaya. Ukuran body
+multipart juga dibatasi saat streaming; gambar JPEG/PNG/WebP lama tetap dapat diakses.
 
 `ImageUploader` menyediakan preview, progres, hapus, dan pesan error. Gambar lama
 baru dilepas saat perubahan halaman disimpan. Upload baru yang dibatalkan dicoba
@@ -395,9 +397,9 @@ tersedia di `/admin/pages/[id]/preview` dan memerlukan hak akses pengelola.
 Tema mengatur latar/gradasi/gambar, font, lebar konten, jarak kartu, radius,
 visibilitas footer, dan noindex. Perluasan `pageThemeSchema` bersifat kompatibel
 ke belakang melalui default Zod, sehingga tidak memerlukan migrasi SQL. Gambar
-halaman dan kartu memakai `next/image`; gambar eksternal tetap tanpa optimasi Next
-agar URL publik lama tidak memerlukan konfigurasi host baru. Tata letak responsif,
-focus state terlihat, dan animasi menghormati `prefers-reduced-motion`.
+halaman dan kartu memakai `next/image` tanpa optimasi Next: file lokal dan URL
+eksternal dimuat langsung oleh browser. Tata letak responsif, focus state terlihat,
+dan animasi menghormati `prefers-reduced-motion`.
 
 Pengukuran Lighthouse mobile pada `http://localhost:3303/p/halaman-contoh`
 (Next production build, halaman contoh terbit, dua run lokal 13 November 2026):
