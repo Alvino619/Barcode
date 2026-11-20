@@ -51,7 +51,7 @@ memerlukan variabel `SEED_ADMIN_*`; jangan gunakan kredensial contoh di produksi
 ## Data dan autentikasi
 
 - `User`: ADMIN atau EDITOR, email unik dan kata sandi bcrypt.
-- `Page`: pemilik, slug unik, tema JSON, status publikasi, sampul dan logo opsional.
+- `Page`: pemilik, slug unik, tema JSON, status publikasi, sampul/logo opsional, serta tenggat `expiresAt` (`NULL` = permanen).
 - `Card`: 10 tipe, urutan, visibilitas, content dan style JSON.
 - `ScanLog`: waktu, user-agent, tipe perangkat, referrer, serta HMAC IP opsional; IP mentah tidak disimpan.
 - Penghapusan halaman menghapus kartu dan log terkait. Penghapusan pemilik yang
@@ -139,9 +139,9 @@ Provider selain `local` ditolak secara eksplisit sampai implementasinya tersedia
 - `/admin`: tabel desktop/kartu mobile, pencarian judul/slug, filter publikasi,
   paginasi server 10 halaman per halaman daftar, jumlah scan dari `ScanLog`, dan
   waktu perubahan dalam WIB. Tersedia empty state, skeleton, dan toast aksi.
-- `/admin/pages/new` dan `/admin/pages/[id]/edit`: judul, slug otomatis/manual,
-  deskripsi, logo, sampul, dan publikasi. Slug diperiksa setelah debounce 400 ms.
-  Publikasi tanpa kartu diizinkan dengan peringatan.
+- `/admin/pages/new` dan `/admin/pages/[id]/settings`: judul, slug otomatis/manual,
+  deskripsi, logo, sampul, publikasi, dan masa berlaku. Slug diperiksa setelah
+  debounce 400 ms. Publikasi tanpa kartu diizinkan dengan peringatan.
 - Duplikasi menyalin tema dan seluruh kartu secara transaksional, memberi judul
   `"<judul> (salinan)"`, slug unik, pemilik akun yang menduplikasi, dan status draft.
 - Hapus membutuhkan konfirmasi judul yang sama persis; kartu, scan, dan riwayat
@@ -174,6 +174,63 @@ ID, file, dan konfirmasi divalidasi di server dengan Zod.
 Autentikasi (`server/auth.ts`, middleware, konfigurasi NextAuth), `cardSchema`,
 dan seed tidak diubah. Tes kartu lama hanya dipindahkan ke runner Vitest.
 
+### Masa berlaku dan penghapusan otomatis
+
+**Sementara (7 hari)** adalah pilihan awal untuk halaman baru, baik draft maupun
+terbit. Tenggat dihitung oleh server: tepat 168 jam sejak halaman dibuat atau
+sejak perubahan dari **Permanen** ke **Sementara** disimpan. Pengaturan
+menampilkan tanggal dan jam penghapusan dalam WIB. Memilih Permanen lalu
+menyimpan membatalkan tenggat; Batal tidak mengubah apa pun. Edit, autosave
+builder, publikasi, perubahan slug, dan scan tidak memperpanjang tenggat.
+Duplikat memakai mode sumber, dengan tujuh hari penuh untuk salinan sementara.
+Semua halaman yang ada sebelum migrasi tetap permanen.
+
+API menerima `lifetime: "temporary" | "permanent"`, bukan `expiresAt`. Jika
+`lifetime` tidak dikirim, POST memakai sementara dan PATCH mempertahankan
+tenggat lama. Sejak tepat waktu kedaluwarsa, halaman tidak dapat dikelola,
+diduplikasi, dibuka melalui slug aktif/alias, atau dipindai, walau job belum
+berjalan. Slug tetap direservasi sampai penghapusan halaman selesai.
+
+**Deployment:** jalankan `npm run db:deploy` dan `npm run db:generate`, lalu
+pasang isi [`deploy/prune-pages.cron`](deploy/prune-pages.cron) melalui
+`crontab -e` **milik akun aplikasi** (tambahkan, jangan timpa jadwal lain):
+
+```cron
+* * * * * cd /srv/qr-card-page && npm run db:prune-pages
+```
+
+Sesuaikan path checkout dan `PATH` untuk Node/npm pada host. Pastikan `tsx`
+tersedia saat runtime, cron aktif, dan akun job memakai `DATABASE_URL`, env
+aplikasi, serta mount persisten `public/uploads/` yang sama dengan proses web.
+Cron tidak otomatis mewarisi env proses web. Menambahkan script npm atau
+men-deploy checkout **tidak memasang crontab**. Periksa `crontab -l` dan pantau
+output/exit status job. Untuk satu lintasan manual: `npm run db:prune-pages`.
+
+Job berjalan tanpa kunjungan, memproses halaman yang telah jatuh tempo saat
+lintasan dimulai dalam batch 100, lalu mencoba file yang ditandai untuk dihapus.
+Laporan membedakan jumlah halaman/file terhapus dan gagal; kegagalan memberi
+exit status nonzero. Bila scheduler mati, akses halaman tetap berakhir tepat
+waktu; penghapusan data dan file menyusul pada lintasan berhasil berikutnya.
+Byte yang sudah diunduh atau disimpan dalam cache klien tidak dapat ditarik kembali.
+
+**Verifikasi di lingkungan uji** (gunakan DB dan direktori upload khusus):
+
+1. Terapkan migrasi dan pastikan `expiresAt` pada halaman lama tetap `NULL`.
+   Buat satu halaman sementara dan satu permanen. Di Pengaturan, cek jam WIB,
+   simpan edit biasa, coba Batal, lalu ubah dan simpan kedua mode. Tenggat hanya
+   dibuat saat mulai sementara. EDITOR lain tidak boleh mengubahnya.
+2. Pada `npm run build && npm run start`, terbitkan halaman sementara, ganti
+   slug, lalu atur tenggat fixture beberapa detik ke depan. Tanpa cron, buka
+   `/p` dan `/r` untuk kedua slug sebelum dan sesudah tenggat: setelah tenggat
+   tidak ada konten, metadata halaman, atau scan baru. PATCH dari tab lama juga
+   ditolak. Halaman permanen tidak terpengaruh.
+3. Pada fixture kedaluwarsa, sertakan kartu, riwayat slug, log, gambar/dokumen
+   eksklusif, upload builder belum terpasang, dan satu file bersama halaman
+   permanen. Jalankan `npm run db:prune-pages` dua kali: periksa row anak,
+   registry, file di disk dan URL origin tanpa cache; hanya file bersama yang
+   tetap ada dari kandidat tersebut. Ulangi dengan fixture baru melalui cron
+   uji setiap menit tanpa request web; cek output cron dan hasil di DB/disk.
+
 ### Slug dan URL lama
 
 Generator menghapus aksen, mengubah huruf menjadi kecil, dan memakai tanda hubung.
@@ -186,10 +243,9 @@ mutasi halaman memakai PostgreSQL advisory transaction lock yang sama agar
 namespace dua tabel tidak mengalami race antarproses. Slug lama milik halaman
 yang sama boleh dipakai kembali; riwayat yang kini menjadi slug aktif dihapus.
 
-`/p/[slug]` memeriksa publikasi dan mengarahkan alias lama langsung ke slug terbaru
-dengan 307 (tidak permanen agar pemakaian ulang slug tidak menyebabkan loop cache).
-Halaman draft, alias draft, atau halaman terhapus menghasilkan 404. Untuk Fase 2,
-alamat publik hanya menampilkan judul/deskripsi; renderer kartu belum dibuat.
+`/p/[slug]` memeriksa publikasi dan tenggat sebelum mengarahkan alias lama ke
+slug terbaru dengan 307. Slug aktif maupun alias dari halaman draft, terhapus,
+atau kedaluwarsa menghasilkan 404.
 
 ### Upload dan daur hidup file
 
@@ -206,14 +262,18 @@ baru dilepas saat perubahan halaman disimpan. Upload baru yang dibatalkan dicoba
 dibersihkan saat form ditutup. `/uploads/[key]` melayani file yang dibuat setelah
 build sehingga unggahan baru tetap bekerja pada `next start`.
 
-Duplikasi berbagi URL gambar. Cleanup memeriksa seluruh referensi Page, tema,
-serta content/style Card sebelum menghapus file. Menghapus satu halaman atau
-mengganti gambarnya tidak merusak duplikat yang masih memakai file tersebut.
-Cleanup file dijalankan setelah transaksi halaman sukses; kegagalan filesystem
-dicatat di server, tanpa membatalkan perubahan halaman yang sudah tersimpan.
-Registri `UploadedImage` dipertahankan bila cleanup gagal. Tab yang ditutup saat
-koneksi terputus dapat meninggalkan upload belum terpakai untuk pemeliharaan
-berikutnya; jangan menghapus file hanya berdasarkan umur tanpa cek referensi.
+Duplikasi berbagi URL file. Saat halaman dihapus, server mengumpulkan logo,
+sampul, tema, isi/gaya semua kartu (termasuk kartu tersembunyi dan dokumen),
+dan upload dengan `sourcePageId` halaman tersebut, meskipun belum dipasang.
+Hanya file lokal terdaftar yang tidak lagi dirujuk oleh halaman/kartu mana pun
+yang ditandai (`UploadedImage.deletingAt`) dalam transaksi penghapusan. File
+bersama tetap tersedia dan tautan eksternal tidak disentuh.
+
+Setelah commit, file bertanda dihapus dari disk, lalu dari registry. Jika disk
+gagal, penanda dipertahankan, file tidak bisa dipasang lagi, dan job berikutnya
+mencoba ulang. Upload sebelum ada `pageId` ditemukan melalui referensi yang
+akhirnya disimpan; upload tanpa asosiasi maupun referensi tidak disapu menurut
+umur, direktori, atau pemiliknya.
 
 Provider lokal memerlukan filesystem persisten yang dapat ditulis. Untuk lebih
 dari satu instance aplikasi, mount direktori upload bersama atau implementasikan
@@ -382,17 +442,16 @@ scroll yang dapat difokuskan keyboard.
 
 ### Fase 4: halaman publik
 
-`/p/[slug]` merender halaman terbit di server. Slug lama yang tercatat pada
-`PageSlugHistory` dialihkan permanen ke slug terbaru; slug draft dan slug yang
-tidak ada sama-sama menghasilkan 404. Hanya kartu terlihat yang dibaca untuk
-halaman publik. Tema/kartu diperiksa ulang saat dirender; kartu rusak dilewati dan
-dicatat di log tanpa mencatat isi pengguna.
+`/p/[slug]` merender halaman terbit di server setiap permintaan, tanpa cache
+lintas-request. Metadata dan isi berbagi hasil pembacaan hanya selama request
+yang sama. Slug lama di `PageSlugHistory` dialihkan sementara (307) ke slug
+terbaru. Slug draft, kedaluwarsa, dan tidak ditemukan sama-sama menghasilkan
+404 tanpa metadata halaman. Hanya kartu terlihat yang dibaca; tema/kartu
+diperiksa ulang dan kartu rusak dilewati tanpa mencatat isi pengguna.
 
-Cache publik memakai ISR 60 detik dengan tag per slug. Mutasi halaman dan builder
-memvalidasi ulang slug aktif beserta alias riwayatnya setelah transaksi berhasil,
-termasuk jalur 404 saat halaman baru dibuat. Metadata menyediakan canonical,
-Open Graph, Twitter, dan robots dari opsi tema. Preview tersimpan untuk draft
-tersedia di `/admin/pages/[id]/preview` dan memerlukan hak akses pengelola.
+Metadata menyediakan canonical, Open Graph, Twitter, dan robots dari opsi tema.
+Preview tersimpan untuk draft tersedia di `/admin/pages/[id]/preview` dan
+memerlukan hak akses pengelola.
 
 Tema mengatur latar/gradasi/gambar, font, lebar konten, jarak kartu, radius,
 visibilitas footer, dan noindex. Perluasan `pageThemeSchema` bersifat kompatibel
@@ -413,9 +472,9 @@ menggunakan origin dari `NEXTAUTH_URL`.
 ## Fase 5 — QR code dan pencatatan scan
 
 QR selalu menunjuk ke `{NEXT_PUBLIC_APP_URL}/r/{slug}`. Route publik `/r/[slug]`
-mencari slug aktif atau riwayat, lalu mengirim redirect 307 ke slug terbaru. Slug
-draft dan yang tidak ada menuju halaman 404 ramah. Slug lama tetap berlaku selama
-halaman masih terbit; halaman yang dihapus atau dijadikan draft tidak dapat dibuka.
+mencari slug aktif atau riwayat, lalu mengirim redirect 307 dengan `no-store`
+ke slug terbaru. GET dan HEAD untuk slug draft, terhapus, tidak ditemukan, atau
+kedaluwarsa menuju `/not-found` tanpa mencatat scan.
 
 Dialog QR tersedia di daftar halaman dan editor. Atur warna, ukuran, margin,
 koreksi error, modul bulat, dan logo opsional, lalu unduh PNG 1024px, SVG, atau
@@ -543,8 +602,8 @@ Jalankan pruning sekali secara manual atau jadwalkan harian, misalnya cron Linux
 20 3 * * * cd /srv/qr-card-page && npm run db:prune-scans >> /var/log/qr-card-page-prune.log 2>&1
 ```
 
-Cron mewarisi env yang disetel service/deployment; pastikan `DATABASE_URL` dan
-`SCAN_RETENTION_DAYS` tersedia. Indeks `(pageId, scannedAt)` sudah ada sejak
+Sediakan `DATABASE_URL` dan `SCAN_RETENTION_DAYS` bagi cron melalui env
+deployment atau file env di checkout aplikasi. Indeks `(pageId, scannedAt)` sudah ada sejak
 migrasi awal dan mendukung filter waktu per halaman; indeks tambahan fase 5
 menangani deduplikasi berdasarkan hash IP.
 

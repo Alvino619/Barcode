@@ -13,6 +13,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:prune-scans": "tsx scripts/prune-scans.ts",
+    "db:prune-pages": "tsx scripts/prune-pages.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },

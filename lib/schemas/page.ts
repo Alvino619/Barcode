@@ -20,6 +20,7 @@ export const pageInputSchema = z.strictObject({
   logo: imageUrlSchema.nullable().default(null),
   coverImage: imageUrlSchema.nullable().default(null),
   isPublished: z.boolean().default(false),
+  lifetime: z.enum(["permanent", "temporary"]).optional(),
 });
 export type PageInput = z.infer<typeof pageInputSchema>;
 export const pageQuerySchema = z.object({

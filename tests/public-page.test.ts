@@ -6,7 +6,7 @@ import { publicMetadata } from "@/lib/public-metadata";
 
 vi.mock("@/lib/prisma", () => ({ prisma: { page: { findUnique: vi.fn() }, pageSlugHistory: { findUnique: vi.fn() } } }));
 const card = { id: "card-1", pageId: "page-1", type: "TEXT" as const, order: 0, isVisible: true, content: { text: "Konten aman" }, style: {}, createdAt: new Date(), updatedAt: new Date() };
-const page = { id: "page-1", ownerId: "owner-1", slug: "halaman-contoh", title: "Halaman Contoh", description: "Informasi contoh", isPublished: true, logo: null, coverImage: null, theme: {}, createdAt: new Date(), updatedAt: new Date(), cards: [card] };
+const page = { id: "page-1", ownerId: "owner-1", slug: "halaman-contoh", title: "Halaman Contoh", description: "Informasi contoh", isPublished: true, expiresAt: null, logo: null, coverImage: null, theme: {}, createdAt: new Date(), updatedAt: new Date(), cards: [card] };
 
 describe("resolusi halaman publik", () => {
   beforeEach(() => { vi.clearAllMocks(); vi.mocked(prisma.page.findUnique).mockResolvedValue(null); vi.mocked(prisma.pageSlugHistory.findUnique).mockResolvedValue(null); });
@@ -18,9 +18,27 @@ describe("resolusi halaman publik", () => {
     expect(prisma.pageSlugHistory.findUnique).not.toHaveBeenCalled();
   });
   it("alias mengarah langsung ke slug terbaru", async () => {
-    const history = { id: "history-1", pageId: page.id, slug: "lama", createdAt: new Date(), page: { slug: "terbaru", isPublished: true } };
+    const history = { id: "history-1", pageId: page.id, slug: "lama", createdAt: new Date(), page: { slug: "terbaru", isPublished: true, expiresAt: null } };
     vi.mocked(prisma.pageSlugHistory.findUnique).mockResolvedValue(history);
     expect(await resolvePublicPage("lama")).toEqual({ kind: "redirect", slug: "terbaru" });
+  });
+  it.each([false, true])("akses berhenti tepat pada tenggat tanpa menunggu penghapusan (alias: %s)", async (alias) => {
+    const expiresAt = new Date("2026-12-01T00:00:00.000Z");
+    const temporary = { ...page, expiresAt };
+    const slug = alias ? "lama" : page.slug;
+    if (alias) {
+      const history = { id: "history-1", slug, pageId: page.id, createdAt: new Date(0), page: temporary };
+      vi.mocked(prisma.pageSlugHistory.findUnique).mockResolvedValue(history);
+    } else {
+      vi.mocked(prisma.page.findUnique).mockResolvedValue(temporary);
+    }
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(expiresAt.getTime() - 1);
+      expect((await resolvePublicPage(slug)).kind).toBe(alias ? "redirect" : "page");
+      vi.setSystemTime(expiresAt);
+      expect(await resolvePublicPage(slug)).toEqual({ kind: "not-found" });
+    } finally { vi.useRealTimers(); }
   });
   it("draft aktif, alias draft, slug hilang, dan slug invalid tidak membocorkan data", async () => {
     vi.mocked(prisma.page.findUnique).mockResolvedValue({ ...page, isPublished: false });

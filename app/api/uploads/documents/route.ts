@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     try {
       await pageTransaction(async (tx) => {
         await assertCanManagePage(user, pageId, tx);
-        await tx.uploadedImage.create({ data: { ...saved, ownerId: user.id } });
+        await tx.uploadedImage.create({ data: { ...saved, ownerId: user.id, sourcePageId: pageId } });
       });
     } catch (error) { await storage.delete(saved.key); throw error; }
     return NextResponse.json({ url: saved.url, fileName: `dokumen.${extension}` }, { status: 201 });

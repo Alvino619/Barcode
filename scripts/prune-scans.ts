@@ -1,8 +1,7 @@
-import { loadEnvConfig } from "@next/env";
+import "./load-env";
 import { PrismaClient } from "@prisma/client";
 
 async function main() {
-  loadEnvConfig(process.cwd());
   const configuredDays = process.env.SCAN_RETENTION_DAYS ?? "365";
   if (!/^\d+$/.test(configuredDays) || Number(configuredDays) < 1 || Number(configuredDays) > 36_500) {
     throw new Error("SCAN_RETENTION_DAYS harus berupa bilangan bulat 1–36500.");

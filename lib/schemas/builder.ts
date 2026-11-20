@@ -7,7 +7,7 @@ export const builderCardSchema = z.strictObject({
   data: cardSchema,
 });
 export const builderDocumentSchema = z.strictObject({
-  page: pageInputSchema,
+  page: pageInputSchema.omit({ lifetime: true }),
   theme: pageThemeSchema,
   cards: z.array(builderCardSchema).max(100, "Maksimal 100 kartu per halaman.")
     .refine((cards) => new Set(cards.map((card) => card.id)).size === cards.length, "ID kartu harus unik."),

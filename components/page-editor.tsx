@@ -11,13 +11,14 @@ import { apiRequest } from "@/lib/api-client";
 import { generateSlug } from "@/lib/slug";
 import { slugSchema, type PageInput } from "@/lib/schemas/page";
 
-type EditorPage = PageInput & { id: string; cardCount: number };
+type EditorPage = PageInput & { id: string; cardCount: number; expiresAt: string | null };
+const deadlineFormat = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "long", timeStyle: "medium" });
 const inputClass = "w-full rounded-lg border bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-60";
 
 export function PageEditor({ page }: { page?: EditorPage }) {
   const router = useRouter();
   const toast = useToast();
-  const [form, setForm] = useState<PageInput>(page ?? { title: "", slug: "", description: "", logo: null, coverImage: null, isPublished: false });
+  const [form, setForm] = useState<PageInput>(page ?? { title: "", slug: "", description: "", logo: null, coverImage: null, isPublished: false, lifetime: "temporary" });
   const [manualSlug, setManualSlug] = useState(Boolean(page));
   const [slugState, setSlugState] = useState({ available: false, checking: false, message: "Slug akan dibuat dari judul." });
   const [pending, setPending] = useState(false);
@@ -46,9 +47,8 @@ export function PageEditor({ page }: { page?: EditorPage }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(""); setPending(true);
     try {
-      // Explicit fields exclude read-only id/cardCount from strict server validation.
-      const { title, slug, description, logo, coverImage, isPublished } = form;
-      await apiRequest(page ? `/api/pages/${page.id}` : "/api/pages", { method: page ? "PATCH" : "POST", body: JSON.stringify({ title, slug, description, logo, coverImage, isPublished }) });
+      const { title, slug, description, logo, coverImage, isPublished, lifetime } = form;
+      await apiRequest(page ? `/api/pages/${page.id}` : "/api/pages", { method: page ? "PATCH" : "POST", body: JSON.stringify({ title, slug, description, logo, coverImage, isPublished, lifetime }) });
       toast(page ? "Perubahan halaman berhasil disimpan." : "Halaman berhasil dibuat.");
       router.push("/admin"); router.refresh();
     } catch (error) {
@@ -69,6 +69,23 @@ export function PageEditor({ page }: { page?: EditorPage }) {
           {page && form.slug !== page.slug && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Alamat halaman akan berubah. URL lama tetap berfungsi dan mengarah ke alamat terbaru selama halaman dipublikasikan.</p>}
         </div>
         <div className="space-y-2"><label htmlFor="description" className="text-sm font-medium">Deskripsi</label><textarea id="description" rows={5} maxLength={2000} disabled={pending} value={form.description} className={inputClass} placeholder="Ceritakan tentang halaman ini…" onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
+        <fieldset disabled={pending} className="space-y-2">
+          <legend className="text-sm font-semibold">Masa berlaku</legend>
+          <div className="flex flex-wrap gap-x-6">
+            {(["temporary", "permanent"] as const).map((mode) => (
+              <label key={mode} htmlFor={`lifetime-${mode}`} className="inline-flex min-h-12 cursor-pointer items-center gap-2 text-sm">
+                <input id={`lifetime-${mode}`} type="radio" name="lifetime" value={mode} checked={form.lifetime === mode} aria-describedby="lifetime-help" onChange={() => setForm({ ...form, lifetime: mode })} />
+                {mode === "temporary" ? "Sementara (7 hari)" : "Permanen"}
+              </label>
+            ))}
+          </div>
+          <div id="lifetime-help" className="space-y-1 text-sm text-muted-foreground" role="status">
+            {form.lifetime === "temporary" ? <>
+              <p>{page?.expiresAt ? <>Batas waktu: <time dateTime={page.expiresAt}>{deadlineFormat.format(new Date(page.expiresAt))} WIB</time>.</> : "Batas waktu: 7 hari sejak perubahan disimpan."}</p>
+              <p>Setelah batas waktu, halaman dan file yang hanya dipakai halaman ini akan dihapus otomatis. Mengedit halaman tidak memperpanjang masa berlaku.</p>
+            </> : <p>Halaman tidak akan dihapus otomatis.</p>}
+          </div>
+        </fieldset>
         <div className="rounded-xl border bg-slate-50 p-4"><label className="flex cursor-pointer items-center justify-between gap-4"><span><span className="block text-sm font-semibold">Publikasikan halaman</span><span className="text-xs text-muted-foreground">Halaman draft hanya dapat dikelola di area admin.</span></span><input type="checkbox" role="switch" className="h-5 w-5 accent-emerald-700" checked={form.isPublished} disabled={pending} onChange={(event) => setForm({ ...form, isPublished: event.target.checked })} /></label>
           {form.isPublished && (page?.cardCount ?? 0) === 0 && <p className="mt-3 text-sm text-amber-800">Halaman ini belum memiliki kartu. Anda tetap dapat mempublikasikannya sekarang.</p>}
         </div>

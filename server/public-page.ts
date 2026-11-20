@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { cardSchema } from "@/lib/schemas/card";
 import { imageUrlSchema, pageThemeSchema, slugSchema } from "@/lib/schemas/page";
 import type { BuilderDocument } from "@/lib/schemas/builder";
+import { isPageExpired } from "./page-access";
 
 type StoredCard = Pick<Card, "id" | "type" | "order" | "isVisible" | "content" | "style">;
 type StoredPage = Pick<Page, "id" | "title" | "slug" | "description" | "logo" | "coverImage" | "theme" | "isPublished">;
@@ -31,10 +32,10 @@ export function parsePageDocument(page: StoredPage, cards: StoredCard[], include
 export async function resolvePublicPage(slug: string): Promise<PublicResolution> {
   if (!slugSchema.safeParse(slug).success) return { kind: "not-found" };
   const page = await prisma.page.findUnique({ where: { slug }, select: {
-    id: true, title: true, slug: true, description: true, logo: true, coverImage: true, theme: true, isPublished: true,
+    id: true, title: true, slug: true, description: true, logo: true, coverImage: true, theme: true, isPublished: true, expiresAt: true,
     cards: { where: { isVisible: true }, orderBy: [{ order: "asc" }, { id: "asc" }], select: { id: true, type: true, order: true, isVisible: true, content: true, style: true } },
   } });
-  if (page) return page.isPublished ? { kind: "page", document: parsePageDocument(page, page.cards) } : { kind: "not-found" };
-  const history = await prisma.pageSlugHistory.findUnique({ where: { slug }, select: { page: { select: { slug: true, isPublished: true } } } });
-  return history?.page.isPublished ? { kind: "redirect", slug: history.page.slug } : { kind: "not-found" };
+  if (page) return page.isPublished && !isPageExpired(page.expiresAt) ? { kind: "page", document: parsePageDocument(page, page.cards) } : { kind: "not-found" };
+  const history = await prisma.pageSlugHistory.findUnique({ where: { slug }, select: { page: { select: { slug: true, isPublished: true, expiresAt: true } } } });
+  return history?.page.isPublished && !isPageExpired(history.page.expiresAt) ? { kind: "redirect", slug: history.page.slug } : { kind: "not-found" };
 }

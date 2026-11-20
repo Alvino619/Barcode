@@ -1,0 +1,3 @@
+# Crontab pengguna aplikasi (bukan /etc/cron.d). Sesuaikan PATH dan checkout.
+PATH=/usr/local/bin:/usr/bin:/bin
+* * * * * cd /srv/qr-card-page && npm run db:prune-pages

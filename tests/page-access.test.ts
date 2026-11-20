@@ -5,7 +5,7 @@ import { assertCanManagePage } from "@/server/page-access";
 vi.mock("@/lib/prisma", () => ({ prisma: { page: { findUnique: vi.fn() } } }));
 const id = "cm123456789012345678901234";
 const page = { id, ownerId: "editor-1", title: "Halaman", slug: "halaman", description: null,
-  isPublished: false, theme: {}, logo: null, coverImage: null, createdAt: new Date(), updatedAt: new Date() };
+  isPublished: false, expiresAt: null, theme: {}, logo: null, coverImage: null, createdAt: new Date(), updatedAt: new Date() };
 
 describe("assertCanManagePage", () => {
   beforeEach(() => { vi.mocked(prisma.page.findUnique).mockReset().mockResolvedValue(page); });
@@ -21,6 +21,12 @@ describe("assertCanManagePage", () => {
   it("halaman hilang menghasilkan error terkontrol", async () => {
     vi.mocked(prisma.page.findUnique).mockResolvedValue(null);
     await expect(assertCanManagePage({ id: "admin", role: "ADMIN" }, id)).rejects.toMatchObject({ status: 404 });
+  });
+  it("halaman kedaluwarsa tidak dapat dikelola pemilik ataupun admin", async () => {
+    vi.mocked(prisma.page.findUnique).mockResolvedValue({ ...page, expiresAt: new Date(0) });
+    for (const role of ["ADMIN", "EDITOR"] as const) {
+      await expect(assertCanManagePage({ id: page.ownerId, role }, id)).rejects.toMatchObject({ status: 404 });
+    }
   });
   it("ID invalid ditolak sebelum query", async () => {
     await expect(assertCanManagePage({ id: "admin", role: "ADMIN" }, "../../secret")).rejects.toThrow();

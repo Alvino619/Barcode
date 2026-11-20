@@ -8,7 +8,7 @@ import { AppError } from "@/server/errors";
 import { deleteUploadSchema, uploadContextSchema } from "@/lib/schemas/page";
 import { getStorage } from "@/lib/storage";
 import { MAX_IMAGE_SIZE, uploadFileSchema, validateImageBytes } from "@/lib/upload";
-import { imageIsReferenced } from "@/server/images";
+import { claimImageDeletion, finalizeImageDeletion } from "@/server/images";
 
 export const runtime = "nodejs";
 export async function POST(request: Request) {
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     try {
       await pageTransaction(async (tx) => {
         await assertCanManagePage(user, context.pageId ?? null, tx);
-        await tx.uploadedImage.create({ data: { ...image, ownerId: user.id } });
+        await tx.uploadedImage.create({ data: { ...image, ownerId: user.id, sourcePageId: context.pageId ?? null } });
       });
     } catch (error) { await storage.delete(image.key); throw error; }
     return NextResponse.json({ url: image.url }, { status: 201 });
@@ -48,16 +48,14 @@ export async function DELETE(request: Request) {
   try {
     assertSameOrigin(request);
     const input = deleteUploadSchema.parse(await readJson(request));
-    const deleted = await pageTransaction(async (tx) => {
+    const marker = await pageTransaction(async (tx) => {
       await assertCanManagePage(user, input.pageId ?? null, tx);
       const image = await tx.uploadedImage.findUnique({ where: { url: input.url } });
-      if (!image) return false;
+      if (!image) return null;
       if (image.ownerId !== user.id && user.role !== "ADMIN") throw new AppError(403, "Unggahan ini bukan milik Anda.");
-      if (await imageIsReferenced(tx, input.url)) return false;
-      await getStorage().delete(image.key);
-      await tx.uploadedImage.delete({ where: { id: image.id } });
-      return true;
+      return claimImageDeletion(tx, image);
     });
+    const deleted = marker ? await finalizeImageDeletion(marker) : false;
     return NextResponse.json({ deleted });
   } catch (error) { return apiError(error); }
 }

@@ -15,5 +15,5 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
   catch (error) { if (error instanceof AppError) notFound(); throw error; }
   if (!page) notFound();
   const cardCount = await prisma.card.count({ where: { pageId: page.id } });
-  return <PageEditor page={{ id: page.id, title: page.title, slug: page.slug, description: page.description ?? "", logo: page.logo, coverImage: page.coverImage, isPublished: page.isPublished, cardCount }} />;
+  return <PageEditor page={{ id: page.id, title: page.title, slug: page.slug, description: page.description ?? "", logo: page.logo, coverImage: page.coverImage, isPublished: page.isPublished, lifetime: page.expiresAt === null ? "permanent" : "temporary", expiresAt: page.expiresAt?.toISOString() ?? null, cardCount }} />;
 }

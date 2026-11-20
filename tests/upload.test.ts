@@ -8,17 +8,26 @@ import { LocalStorageProvider } from "@/lib/storage";
 import type { StorageProvider } from "@/lib/storage";
 import * as storageModule from "@/lib/storage";
 import { imageKeySchema } from "@/lib/schemas/page";
-import { POST } from "@/app/api/uploads/route";
+import { POST, DELETE } from "@/app/api/uploads/route";
+import { POST as uploadDocument } from "@/app/api/uploads/documents/route";
+import { assertImageAccess } from "@/server/images";
+import { deletePageInTransaction } from "@/server/page-deletion";
+import type { Prisma } from "@prisma/client";
 
 const mocks = vi.hoisted(() => ({
   storage: null as StorageProvider | null,
   create: vi.fn(),
+  findUnique: vi.fn(), update: vi.fn(), deleteMany: vi.fn(), referenced: vi.fn(),
   authorize: vi.fn(),
 }));
+vi.mock("@/lib/prisma", () => ({ prisma: { uploadedImage: { deleteMany: mocks.deleteMany } } }));
 vi.mock("@/server/auth", () => ({ requireUser: async () => ({ id: "user-1", role: "USER" }) }));
 vi.mock("@/server/page-access", () => ({ assertCanManagePage: mocks.authorize }));
 vi.mock("@/server/page-transactions", () => ({
-  pageTransaction: (work: (tx: unknown) => Promise<unknown>) => work({ uploadedImage: { create: mocks.create } }),
+  pageTransaction: (work: (tx: unknown) => Promise<unknown>) => work({
+    uploadedImage: { create: mocks.create, findUnique: mocks.findUnique, update: mocks.update },
+    $queryRaw: mocks.referenced,
+  }),
 }));
 vi.mock("@/lib/storage", async (importOriginal) => ({
   ...(await importOriginal<typeof storageModule>()),
@@ -74,8 +83,9 @@ describe("POST unggahan gambar", () => {
   });
   afterEach(async () => { await rm(directory, { recursive: true, force: true }); });
 
-  async function upload(data: Buffer) {
+  async function upload(data: Buffer, pageId?: string) {
     const form = new FormData();
+    if (pageId) form.set("pageId", pageId);
     form.set("file", new File([new Uint8Array(data)], "image", { type: "application/octet-stream" }));
     const origin = new URL(process.env.NEXTAUTH_URL ?? "http://localhost").origin;
     return POST(new Request(`${origin}/api/uploads`, { method: "POST", headers: { origin }, body: form }));
@@ -96,7 +106,20 @@ describe("POST unggahan gambar", () => {
     expect(metadata).toMatchObject({ format: "webp", width: expectedWidth, height: expectedHeight, hasAlpha: alpha });
     expect(mocks.authorize).toHaveBeenCalledTimes(2);
     expect(mocks.create).toHaveBeenCalledOnce();
-    expect(mocks.create.mock.calls[0][0].data).toMatchObject({ url, ownerId: "user-1" });
+    expect(mocks.create.mock.calls[0][0].data).toMatchObject({ url, ownerId: "user-1", sourcePageId: null });
+  });
+
+  it("mencatat halaman asal gambar dan dokumen sebelum dipasang", async () => {
+    const pageId = "ckx1234567890123456789012";
+    const input = await sharp({ create: { width: 1, height: 1, channels: 3, background: "red" } }).png().toBuffer();
+    expect((await upload(input, pageId)).status).toBe(201);
+    const form = new FormData();
+    form.set("pageId", pageId);
+    form.set("file", new File(["%PDF-1.7\n1 0 obj\nendobj\n%%EOF"], "example.pdf"));
+    const origin = new URL(process.env.NEXTAUTH_URL ?? "http://localhost").origin;
+    const response = await uploadDocument(new Request(`${origin}/api/uploads/documents`, { method: "POST", headers: { origin }, body: form }));
+    expect(response.status).toBe(201);
+    expect(mocks.create.mock.calls.map(([args]) => args.data.sourcePageId)).toEqual([pageId, pageId]);
   });
 
   it("menolak gambar terpotong tanpa menyimpan atau mendaftarkan file", async () => {
@@ -116,5 +139,54 @@ describe("POST unggahan gambar", () => {
       expect(await readdir(directory)).toEqual([]);
       expect(mocks.create).toHaveBeenCalledOnce();
     } finally { consoleError.mockRestore(); }
+  });
+});
+
+describe("penghapusan unggahan", () => {
+  const key = "12345678-1234-4123-8123-123456789012.pdf";
+  const url = `/uploads/${key}`;
+  const image = { id: "file", key, url, ownerId: "user-1", deletingAt: null };
+  const origin = new URL(process.env.NEXTAUTH_URL ?? "http://localhost").origin;
+  const remove = () => DELETE(new Request(`${origin}/api/uploads`, { method: "DELETE", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ url }) }));
+
+  it("mempertahankan marker setelah gagal unlink dan menolak pemakaian ulang sampai retry sukses", async () => {
+    mocks.findUnique.mockResolvedValue(image);
+    mocks.referenced.mockResolvedValue([{ used: false }]);
+    mocks.update.mockClear();
+    mocks.deleteMany.mockReset().mockResolvedValue({ count: 1 });
+    const unlink = vi.fn().mockRejectedValueOnce(new Error("unlink failed")).mockResolvedValue(undefined);
+    mocks.storage = { save: vi.fn(), delete: unlink, getUrl: vi.fn() };
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect((await remove()).status).toBe(500);
+      const deletingAt = mocks.update.mock.calls[0][0].data.deletingAt;
+      expect(deletingAt).toBeInstanceOf(Date);
+      expect(mocks.deleteMany).not.toHaveBeenCalled();
+      mocks.findUnique.mockResolvedValue({ ...image, deletingAt });
+      const tx = { uploadedImage: { findUnique: mocks.findUnique } } as unknown as Prisma.TransactionClient;
+      for (const role of ["ADMIN", "EDITOR"] as const) {
+        await expect(assertImageAccess(tx, { id: image.ownerId, role }, [url])).rejects.toMatchObject({ status: 400 });
+      }
+      expect(await (await remove()).json()).toEqual({ deleted: true });
+      expect(mocks.update).toHaveBeenCalledTimes(1);
+      expect(mocks.deleteMany).toHaveBeenCalledWith({ where: { id: image.id, deletingAt } });
+    } finally { log.mockRestore(); }
+  });
+
+  it("hanya mengklaim file terdaftar yang tak dipakai setelah halaman dihapus", async () => {
+    const shared = "/uploads/shared.webp", pending = "/uploads/pending.pdf";
+    const findMany = vi.fn().mockResolvedValue([image, { ...image, id: "shared", url: shared }, { ...image, id: "pending", url: pending }]);
+    const removePage = vi.fn();
+    const tx = {
+      page: { findUniqueOrThrow: vi.fn().mockResolvedValue({ theme: { image: shared }, cards: [{ content: { file: url, link: "https://example.org/file.pdf" }, style: { image: shared } }] }), delete: removePage },
+      uploadedImage: { findMany, update: vi.fn() },
+      $queryRaw: async (_sql: TemplateStringsArray, candidate: string) => {
+        expect(removePage).toHaveBeenCalledWith({ where: { id: "page" } });
+        return [{ used: candidate === shared }];
+      },
+    };
+    const claims = await deletePageInTransaction(tx as unknown as Prisma.TransactionClient, "page");
+    expect(findMany.mock.calls[0][0].where.OR).toEqual([{ sourcePageId: "page" }, { url: { in: [shared, url] } }]);
+    expect(claims.map(({ id }) => id)).toEqual(["file", "pending"]);
   });
 });

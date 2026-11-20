@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { getStorage } from "@/lib/storage";
 import { uploadUrlSchema } from "@/lib/schemas/page";
 import { AppError } from "./errors";
@@ -16,7 +17,7 @@ export async function assertImageAccess(tx: Prisma.TransactionClient, user: Mana
   for (const url of new Set(urls.filter((value): value is string => value !== null))) {
     if (!uploadUrlSchema.safeParse(url).success) throw new AppError(400, "URL unggahan tidak valid. Unggah ulang file melalui aplikasi.");
     const image = await tx.uploadedImage.findUnique({ where: { url } });
-    if (!image) throw new AppError(400, "Gambar tidak tersedia. Unggah ulang gambar Anda.");
+    if (!image || image.deletingAt) throw new AppError(400, "Gambar tidak tersedia. Unggah ulang gambar Anda.");
     if (image.ownerId === user.id || user.role === "ADMIN") continue;
     const sharedPage = await tx.page.findFirst({ where: { ownerId: user.id, OR: [{ logo: url }, { coverImage: url }] } });
     const ownedCards = await tx.$queryRaw<{ found: boolean }[]>`SELECT EXISTS (
@@ -41,17 +42,35 @@ export async function imageIsReferenced(tx: Prisma.TransactionClient, url: strin
   return rows[0]?.used ?? true;
 }
 
-// Called after the page commit. Cleanup failure must never report the successful
-// page mutation as failed. Retained records allow a later retry/maintenance job.
+type ImageDeletion = { id: string; key: string; deletingAt: Date };
+
+// Caller holds the page write lock. Once marked, a file cannot be attached again.
+export async function claimImageDeletion(tx: Prisma.TransactionClient, image: {
+  id: string; key: string; url: string; deletingAt: Date | null;
+}): Promise<ImageDeletion | null> {
+  const { id, key } = image;
+  if (image.deletingAt) return { id, key, deletingAt: image.deletingAt };
+  if (await imageIsReferenced(tx, image.url)) return null;
+  const deletingAt = new Date();
+  await tx.uploadedImage.update({ where: { id }, data: { deletingAt } });
+  return { id, key, deletingAt };
+}
+
+// Only committed claims may reach storage. Concurrent retries can both unlink
+// (ENOENT is success), but only one can finish the registry entry.
+export async function finalizeImageDeletion({ id, key, deletingAt }: ImageDeletion) {
+  await getStorage().delete(key);
+  return (await prisma.uploadedImage.deleteMany({ where: { id, deletingAt } })).count !== 0;
+}
+
 export async function cleanupImages(urls: string[]) {
   for (const url of new Set(urls)) {
     try {
-      await pageTransaction(async (tx) => {
+      const marker = await pageTransaction(async (tx) => {
         const image = await tx.uploadedImage.findUnique({ where: { url } });
-        if (!image || await imageIsReferenced(tx, url)) return;
-        await getStorage().delete(image.key);
-        await tx.uploadedImage.delete({ where: { id: image.id } });
+        return image && claimImageDeletion(tx, image);
       });
+      if (marker) await finalizeImageDeletion(marker);
     } catch (error) { console.error("Pembersihan gambar tertunda", error); }
   }
 }

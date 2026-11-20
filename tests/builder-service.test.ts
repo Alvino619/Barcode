@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/server/page-transactions", () => ({ pageTransaction: (work: (tx: typeof mocks.tx) => Promise<unknown>) => work(mocks.tx) }));
 vi.mock("@/server/page-access", () => ({ assertCanManagePage: mocks.canManage }));
 vi.mock("@/server/pages", () => ({ isSlugAvailable: vi.fn().mockResolvedValue(true) }));
-vi.mock("@/server/public-cache", () => ({ invalidatePublicPage: vi.fn() }));
 vi.mock("@/server/images", () => ({ assertImageAccess: vi.fn(), cleanupImages: vi.fn(), collectImageUrls: () => [] }));
 
 describe("penyimpanan builder", () => {

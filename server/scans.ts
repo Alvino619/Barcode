@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { isIP } from "node:net";
 import { prisma } from "@/lib/prisma";
+import { isPageExpired } from "./page-access";
 
 export const SCAN_DEDUPE_WINDOW_MS = 30_000;
 const botPattern = /bot|crawler|spider|slurp|preview|facebookexternalhit|telegrambot|discordbot|twitterbot|headless|lighthouse/i;
@@ -43,11 +44,11 @@ export function sanitizeReferrer(value: string | null) {
   } catch { return null; }
 }
 
-export async function resolvePublishedSlug(slug: string): Promise<{ pageId: string; latestSlug: string } | null> {
-  const page = await prisma.page.findUnique({ where: { slug }, select: { id: true, slug: true, isPublished: true } });
-  if (page) return page.isPublished ? { pageId: page.id, latestSlug: page.slug } : null;
-  const history = await prisma.pageSlugHistory.findUnique({ where: { slug }, select: { page: { select: { id: true, slug: true, isPublished: true } } } });
-  return history?.page.isPublished ? { pageId: history.page.id, latestSlug: history.page.slug } : null;
+export async function resolvePublishedSlug(slug: string) {
+  const select = { id: true, slug: true, isPublished: true, expiresAt: true } as const;
+  const page = await prisma.page.findUnique({ where: { slug }, select })
+    ?? (await prisma.pageSlugHistory.findUnique({ where: { slug }, select: { page: { select } } }))?.page;
+  return page?.isPublished && !isPageExpired(page.expiresAt) ? { pageId: page.id, latestSlug: page.slug, expiresAt: page.expiresAt } : null;
 }
 
 export async function recordScan(pageId: string, request: Request, now = new Date()) {

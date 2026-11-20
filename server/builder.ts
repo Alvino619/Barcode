@@ -1,4 +1,3 @@
-import { invalidatePublicPage } from "./public-cache";
 import { cardSchema } from "@/lib/schemas/card";
 import { pageThemeSchema } from "@/lib/schemas/page";
 import { saveBuilderSchema, versionMatches, type BuilderState } from "@/lib/schemas/builder";
@@ -53,7 +52,6 @@ export async function saveBuilder(user: ManagingUser, pageId: string, input: unk
     await tx.page.update({ where: { id: pageId }, data: { ...document.page, theme: document.theme, updatedAt } });
     return { updatedAt: updatedAt.toISOString(), oldUrls };
   });
-  await invalidatePublicPage(pageId);
   await cleanupImages(result.oldUrls);
   return { updatedAt: result.updatedAt };
 }

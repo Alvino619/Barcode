@@ -47,13 +47,16 @@ model Page {
   theme       Json
   coverImage  String?
   logo        String?
+  expiresAt   DateTime? @db.Timestamptz(3)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   cards       Card[]
   scanLogs    ScanLog[]
   slugHistory PageSlugHistory[]
+  uploads     UploadedImage[]
 
   @@index([ownerId])
+  @@index([expiresAt, id])
 }
 
 model PageSlugHistory {
@@ -74,8 +77,13 @@ model UploadedImage {
   ownerId   String
   owner     User     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now())
+  sourcePageId String?
+  sourcePage   Page?    @relation(fields: [sourcePageId], references: [id], onDelete: SetNull)
+  deletingAt   DateTime? @db.Timestamptz(3)
 
   @@index([ownerId, createdAt])
+  @@index([sourcePageId])
+  @@index([deletingAt])
 }
 
 model Card {
